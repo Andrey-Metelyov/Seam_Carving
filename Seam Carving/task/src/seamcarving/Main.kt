@@ -3,11 +3,11 @@ package seamcarving
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
-import java.lang.Integer.max
-import java.lang.Integer.min
 import javax.imageio.ImageIO
 
 val params = mutableMapOf<String, String>()
+
+val debug = false
 
 fun main(args: Array<String>) {
     readParams(args)
@@ -17,44 +17,94 @@ fun main(args: Array<String>) {
     makeEnergyImage(input, output)
 }
 
+private fun getLeft(x: Int, y: Int, image: BufferedImage): Color {
+    val i = when (x) {
+        0 -> 0
+        image.width - 1 -> image.width - 3
+        else -> x - 1
+    }
+    if (debug) System.err.println("($x,$y) -> left  =($i,$y)")
+    return Color(image.getRGB(i, y))
+//    return when(x) {
+//        0 -> Color(image.getRGB(0, y))
+//        image.width - 1 -> Color(image.getRGB(image.width - 3, y))
+//        else -> Color(image.getRGB(x - 1, y))
+//    }
+}
+
+private fun getRight(x: Int, y: Int, image: BufferedImage): Color {
+    val i = when (x) {
+        0 -> 2
+        image.width - 1 -> image.width - 1
+        else -> x + 1
+    }
+    if (debug) System.err.println("($x,$y) -> right =($i,$y)")
+    return Color(image.getRGB(i, y))
+//    return when(x) {
+//        0 -> Color(image.getRGB(2, y))
+//        image.width - 1 -> Color(image.getRGB(image.width - 1, y))
+//        else -> Color(image.getRGB(x + 1, y))
+//    }
+}
+
+private fun getTop(x: Int, y: Int, image: BufferedImage): Color {
+    val j = when (y) {
+        0 -> 0
+        image.height - 1 -> image.height - 3
+        else -> y - 1
+    }
+    if (debug) System.err.println("($x,$y) -> top   =($x,$j)")
+    return Color(image.getRGB(x, j))
+//    return when(y) {
+//        0 -> Color(image.getRGB(x, 0))
+//        image.height - 1 -> Color(image.getRGB(x, y - 3))
+//        else -> Color(image.getRGB(x, y  - 1))
+//    }
+}
+
+private fun getBottom(x: Int, y: Int, image: BufferedImage): Color {
+    val j = when (y) {
+        0 -> 2
+        image.height - 1 -> image.height - 1
+        else -> y + 1
+    }
+    if (debug) System.err.println("($x,$y) -> bottom=($x,$j)")
+    return Color(image.getRGB(x, j))
+//    return when(y) {
+//        0 -> Color(image.getRGB(x, 2))
+//        image.height - 1 -> Color(image.getRGB(x, image.height - 1))
+//        else -> Color(image.getRGB(x, y  + 1))
+//    }
+}
+
 private fun makeEnergyImage(input: String?, output: String?) {
     val image = ImageIO.read(File(input))
     val energy = Array(image.width) { Array(image.height) { 0.0 } }
     System.err.println("image ${image.width} x ${image.height}")
+
     var maxEnergy = 0.0
     for (i in 0 until image.width) {
         for (j in 0 until image.height) {
-            val left = Color(image.getRGB(max(i - 1, 0), j))
-            val right = Color(image.getRGB(min(i + 1, image.width - 1), j))
-            val top = Color(image.getRGB(i, max(j - 1, 0)))
-            val bottom = Color(image.getRGB(i, min(j + 1, image.height - 1)))
-
-            val dx = (left.red - right.red) * (left.red - right.red)
-            +(left.green - right.green) * (left.green - right.green)
-            +(left.blue - right.blue) * (left.blue - right.blue)
-            val dy = (bottom.red - top.red) * (bottom.red - top.red)
-            +(bottom.green - top.green) * (bottom.green - top.green)
-            +(bottom.blue - top.blue) * (bottom.blue - top.blue)
+            val dx = getDx(getLeft(i, j, image), getRight(i, j, image))
+            val dy = getDx(getTop(i, j, image), getBottom(i, j, image))
             energy[i][j] = kotlin.math.sqrt((dx + dy).toDouble())
-            System.err.println(
-                "E($i,$j)=${energy[i][j]} " +
-                        "left: ${max(i - 1, 0)},$j" +
-                        " right: ${min(i + 1, image.width - 1)},$j" +
-                        " top: $i,${max(j - 1, 0)}" +
-                        " bottom: $i,${min(j + 1, image.height - 1)}"
-            )
             if (energy[i][j] > maxEnergy) {
                 maxEnergy = energy[i][j]
             }
         }
     }
+
     for (i in 0 until image.width)
-        for (j in 0 until image.height)
-            image.setRGB(i, j, (255.0 * energy[i][j] / maxEnergy).toInt())
+        for (j in 0 until image.height) {
+            val norm = (255.0 * energy[i][j] / maxEnergy).toInt()
+            image.setRGB(i, j, Color(norm, norm, norm).rgb)
+        }
 
     ImageIO.write(image, "png", File(output))
 }
 
+private fun getDx(a: Color, b: Color): Int =
+    (a.red - b.red) * (a.red - b.red) + (a.green - b.green) * (a.green - b.green) + (a.blue - b.blue) * (a.blue - b.blue)
 
 private fun makeNegativeImage(input: String?, output: String?) {
     val image = ImageIO.read(File(input))
