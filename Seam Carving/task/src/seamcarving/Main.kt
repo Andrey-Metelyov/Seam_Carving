@@ -4,6 +4,9 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.math.sqrt
+import kotlin.math.min
+import kotlin.math.max
 
 val params = mutableMapOf<String, String>()
 
@@ -14,8 +17,87 @@ fun main(args: Array<String>) {
     val input = params["-in"]
     val output = params["-out"]
 
-    makeEnergyImage(input, output)
+    highlightSeam(input, output)
+//    makeEnergyImage(input, output)
 }
+
+fun highlightSeam(input: String?, output: String?) {
+    val image = ImageIO.read(File(input))
+    val energy = Array(image.width) { Array(image.height) { 0.0 } }
+    System.err.println("image ${image.width} x ${image.height}")
+    System.err.println("energy ${energy.size} x ${energy[0].size}")
+
+    val maxEnergy = getEnergy(image, energy)
+//    System.err.println("energy:")
+//    energy.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
+    val seam = energy.copyOf()
+//    val seam = Array(image.width) { Array(image.height) { 0.0 } }
+//    for (i in seam.indices) {
+//        for (j in seam[i].indices) {
+//            seam[i][j] = energy[i][j]
+//        }
+//    }
+//    System.err.println("seam before:")
+//    seam.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
+    for (j in 1 until seam[0].size) {
+        for (i in seam.indices) {
+            val min = min3(topLeft(i, j, seam), top(i, j, seam), topRight(i, j, seam))
+//            System.err.println("min: $min")
+            seam[i][j] += min
+        }
+//        println("seam after line $j:")
+//        seam.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
+    }
+//    System.err.println("seam after:")
+//    seam.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
+
+    val path = Array(image.height) { 0 }
+
+    var min = 0
+    for (col in 1..seam.lastIndex) {
+        if (seam[col][seam[0].lastIndex] < seam[min][seam[0].lastIndex]) {
+            min = col
+        }
+    }
+    System.err.println("first min=$min")
+    path[path.lastIndex] = min
+    var prevMin = min
+    for (row in seam[0].lastIndex - 1 downTo 0) {
+        min = max(prevMin - 1, 0)
+        for (col in prevMin..min(prevMin + 1, seam.lastIndex)) {
+            System.err.println("col=$col min=$min row=$row: ${seam[col][row]} ? ${seam[min][row]}")
+            if (seam[col][row] < seam[min][row]) {
+                min = col
+            }
+        }
+        prevMin = min
+        path[row] = min
+    }
+    System.err.println("path:")
+    System.err.println(path.joinToString(" "))
+    for (row in 0 until image.height) {
+        image.setRGB(path[row], row, Color.RED.rgb)
+    }
+    ImageIO.write(image, "png", File(output))
+}
+
+fun topRight(col: Int, row: Int, seam: Array<Array<Double>>): Double {
+    return when (col) {
+        seam.size - 1 -> seam[seam.size - 1][row - 1]
+        else -> seam[col + 1][row - 1]
+    }
+}
+
+fun top(col: Int, row: Int, seam: Array<Array<Double>>): Double = seam[col][row - 1]
+
+fun topLeft(col: Int, row: Int, seam: Array<Array<Double>>): Double {
+    return when (col) {
+        0 -> seam[0][row - 1]
+        else -> seam[col - 1][row - 1]
+    }
+}
+
+fun min3(a: Double, b: Double, c: Double): Double = kotlin.math.min(a, kotlin.math.min(b, c))
 
 private fun getLeft(x: Int, y: Int, image: BufferedImage): Color {
     val i = when (x) {
@@ -82,17 +164,7 @@ private fun makeEnergyImage(input: String?, output: String?) {
     val energy = Array(image.width) { Array(image.height) { 0.0 } }
     System.err.println("image ${image.width} x ${image.height}")
 
-    var maxEnergy = 0.0
-    for (i in 0 until image.width) {
-        for (j in 0 until image.height) {
-            val dx = getDx(getLeft(i, j, image), getRight(i, j, image))
-            val dy = getDx(getTop(i, j, image), getBottom(i, j, image))
-            energy[i][j] = kotlin.math.sqrt((dx + dy).toDouble())
-            if (energy[i][j] > maxEnergy) {
-                maxEnergy = energy[i][j]
-            }
-        }
-    }
+    val maxEnergy = getEnergy(image, energy)
 
     for (i in 0 until image.width)
         for (j in 0 until image.height) {
@@ -101,6 +173,24 @@ private fun makeEnergyImage(input: String?, output: String?) {
         }
 
     ImageIO.write(image, "png", File(output))
+}
+
+private fun getEnergy(
+    image: BufferedImage,
+    energy: Array<Array<Double>>
+): Double {
+    var maxEnergy = 0.0
+    for (i in 0 until image.width) {
+        for (j in 0 until image.height) {
+            val dx = getDx(getLeft(i, j, image), getRight(i, j, image))
+            val dy = getDx(getTop(i, j, image), getBottom(i, j, image))
+            energy[i][j] = sqrt((dx + dy).toDouble())
+            if (energy[i][j] > maxEnergy) {
+                maxEnergy = energy[i][j]
+            }
+        }
+    }
+    return maxEnergy
 }
 
 private fun getDx(a: Color, b: Color): Int =
