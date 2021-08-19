@@ -14,22 +14,89 @@ val params = mutableMapOf<String, String>()
 val debug = false
 
 fun main(args: Array<String>) {
+    System.err.println(args.joinToString())
     readParams(args)
     val input = params["-in"]
     val output = params["-out"]
 
     val image = ImageIO.read(File(input))
 
-    val result = highlightSeam(image.transpose())
+    val width = params["-width"]?.toInt() ?: 0
+    val height = params["-height"]?.toInt() ?: 0
 
-    ImageIO.write(result.transpose(), "png", File(output))
+    var result: BufferedImage? = null
+
+    repeat(width) {
+        result = deleteSeam(result ?: image)
+    }
+
+    result = result!!.transpose()
+
+    repeat(height) {
+        result = deleteSeam(result!!)
+    }
+
+    ImageIO.write(result!!.transpose(), "png", File(output))
 }
+
 
 private fun BufferedImage.transpose(): BufferedImage {
     val result = BufferedImage(this.height, this.width, this.type)
     for (x in 0 until result.width)
         for (y in 0 until result.height)
             result.setRGB(x, y, this.getRGB(y, x))
+    return result
+}
+
+fun deleteSeam(image: BufferedImage): BufferedImage {
+    val energy = Array(image.width) { Array(image.height) { 0.0 } }
+//    System.err.println("image ${image.width} x ${image.height}")
+//    System.err.println("energy ${energy.size} x ${energy[0].size}")
+
+    val maxEnergy = getEnergy(image, energy)
+    val seam = energy.copyOf()
+    for (j in 1 until seam[0].size) {
+        for (i in seam.indices) {
+            val min = min3(topLeft(i, j, seam), top(i, j, seam), topRight(i, j, seam))
+            seam[i][j] += min
+        }
+    }
+
+    val path = Array(image.height) { 0 }
+
+    var min = 0
+    for (col in 1..seam.lastIndex) {
+        if (seam[col][seam[0].lastIndex] < seam[min][seam[0].lastIndex]) {
+            min = col
+        }
+    }
+    System.err.println("first min=$min")
+    path[path.lastIndex] = min
+    var prevMin = min
+    for (row in seam[0].lastIndex - 1 downTo 0) {
+        min = max(prevMin - 1, 0)
+        for (col in prevMin..min(prevMin + 1, seam.lastIndex)) {
+//            System.err.println("col=$col min=$min row=$row: ${seam[col][row]} ? ${seam[min][row]}")
+            if (seam[col][row] < seam[min][row]) {
+                min = col
+            }
+        }
+        prevMin = min
+        path[row] = min
+    }
+//    System.err.println("path:")
+//    System.err.println(path.joinToString(" "))
+    val result = BufferedImage(image.width - 1, image.height, image.type)
+//    System.err.println("result image ${result.width} x ${result.height}")
+    for (y in 0 until result.height) {
+        for (x in 0 until path[y]) {
+            result.setRGB(x, y, image.getRGB(x, y))
+        }
+        for (x in path[y] until result.width) {
+            result.setRGB(x, y, image.getRGB(x + 1, y))
+        }
+    }
+//    System.err.println("result image ${result.width} x ${result.height}")
     return result
 }
 
@@ -55,7 +122,7 @@ fun highlightSeam(image: BufferedImage): BufferedImage {
             min = col
         }
     }
-    System.err.println("first min=$min")
+//    System.err.println("first min=$min")
     path[path.lastIndex] = min
     var prevMin = min
     for (row in seam[0].lastIndex - 1 downTo 0) {
@@ -98,7 +165,7 @@ fun min3(a: Double, b: Double, c: Double): Double = kotlin.math.min(a, kotlin.ma
 private fun getLeft(x: Int, y: Int, image: BufferedImage): Color {
     val i = when (x) {
         0 -> 0
-        image.width - 1 -> image.width - 3
+        image.width - 1 -> (image.width - 3).coerceAtLeast(0)
         else -> x - 1
     }
     if (debug) System.err.println("($x,$y) -> left  =($i,$y)")
@@ -112,8 +179,8 @@ private fun getLeft(x: Int, y: Int, image: BufferedImage): Color {
 
 private fun getRight(x: Int, y: Int, image: BufferedImage): Color {
     val i = when (x) {
-        0 -> 2
-        image.width - 1 -> image.width - 1
+        0 -> 2.coerceAtMost(image.width - 1)
+        image.width - 1 -> (image.width - 1)
         else -> x + 1
     }
     if (debug) System.err.println("($x,$y) -> right =($i,$y)")
@@ -128,7 +195,7 @@ private fun getRight(x: Int, y: Int, image: BufferedImage): Color {
 private fun getTop(x: Int, y: Int, image: BufferedImage): Color {
     val j = when (y) {
         0 -> 0
-        image.height - 1 -> image.height - 3
+        image.height - 1 -> (image.height - 3).coerceAtLeast(0)
         else -> y - 1
     }
     if (debug) System.err.println("($x,$y) -> top   =($x,$j)")
@@ -142,7 +209,7 @@ private fun getTop(x: Int, y: Int, image: BufferedImage): Color {
 
 private fun getBottom(x: Int, y: Int, image: BufferedImage): Color {
     val j = when (y) {
-        0 -> 2
+        0 -> 2.coerceAtMost(image.height - 1)
         image.height - 1 -> image.height - 1
         else -> y + 1
     }
@@ -210,6 +277,7 @@ fun readParams(args: Array<String>) {
     for (i in 0..args.lastIndex) {
         if (args[i].startsWith("-")) {
             params[args[i]] = args[i + 1]
+            System.err.println("${args[i]} = ${args[i + 1]}")
         } else {
             continue
         }
