@@ -1,6 +1,7 @@
 package seamcarving
 
 import java.awt.Color
+import java.awt.Image
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
@@ -17,39 +18,34 @@ fun main(args: Array<String>) {
     val input = params["-in"]
     val output = params["-out"]
 
-    highlightSeam(input, output)
-//    makeEnergyImage(input, output)
+    val image = ImageIO.read(File(input))
+
+    val result = highlightSeam(image.transpose())
+
+    ImageIO.write(result.transpose(), "png", File(output))
 }
 
-fun highlightSeam(input: String?, output: String?) {
-    val image = ImageIO.read(File(input))
+private fun BufferedImage.transpose(): BufferedImage {
+    val result = BufferedImage(this.height, this.width, this.type)
+    for (x in 0 until result.width)
+        for (y in 0 until result.height)
+            result.setRGB(x, y, this.getRGB(y, x))
+    return result
+}
+
+fun highlightSeam(image: BufferedImage): BufferedImage {
     val energy = Array(image.width) { Array(image.height) { 0.0 } }
     System.err.println("image ${image.width} x ${image.height}")
     System.err.println("energy ${energy.size} x ${energy[0].size}")
 
     val maxEnergy = getEnergy(image, energy)
-//    System.err.println("energy:")
-//    energy.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
     val seam = energy.copyOf()
-//    val seam = Array(image.width) { Array(image.height) { 0.0 } }
-//    for (i in seam.indices) {
-//        for (j in seam[i].indices) {
-//            seam[i][j] = energy[i][j]
-//        }
-//    }
-//    System.err.println("seam before:")
-//    seam.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
     for (j in 1 until seam[0].size) {
         for (i in seam.indices) {
             val min = min3(topLeft(i, j, seam), top(i, j, seam), topRight(i, j, seam))
-//            System.err.println("min: $min")
             seam[i][j] += min
         }
-//        println("seam after line $j:")
-//        seam.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
     }
-//    System.err.println("seam after:")
-//    seam.forEach { System.err.println(it.map { String.format("%.2f", it) }.joinToString(" ")) }
 
     val path = Array(image.height) { 0 }
 
@@ -78,7 +74,7 @@ fun highlightSeam(input: String?, output: String?) {
     for (row in 0 until image.height) {
         image.setRGB(path[row], row, Color.RED.rgb)
     }
-    ImageIO.write(image, "png", File(output))
+    return image
 }
 
 fun topRight(col: Int, row: Int, seam: Array<Array<Double>>): Double {
